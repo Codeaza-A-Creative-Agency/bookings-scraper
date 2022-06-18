@@ -16,7 +16,7 @@ class logger():
         self.l.addHandler(self.fileHandler)
         self.l.addHandler(self.streamHandler)
 
-    def scrapper_logger(self):
-        self.setup_logger("log1", "scrapper.log")
-        logger = logging.getLogger("log1")
+    def scrapper_logger(self,name,filename):
+        self.setup_logger(name,filename)
+        logger = logging.getLogger(name)
         return logger

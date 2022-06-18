@@ -2,5 +2,10 @@
     "params":
     {
         "rows":25
-    }
+    },
+    "proxy_list" : ["108.59.14.208:13040","108.59.14.203:13040"],
+    "db_username" : "root",
+    "db_password" : "niazi554",
+    "db_name" : "bookingsdata",
+    "db_host" : "localhost"
 }

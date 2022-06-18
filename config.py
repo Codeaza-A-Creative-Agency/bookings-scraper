@@ -1,13 +1,13 @@
+import json
 import mysql.connector
-
 
 def connection():
     db = mysql.connector.connect(
-        host="localhost",
-        user="root",
+        host=configuration["db_host"],
+        user=configuration["db_username"],
         # charset='utf8mb4',
-        password="niazi554",
-        database="bookingsdata"
+        password=configuration["db_password"],
+        database=configuration["db_name"]
     )
     if db.is_connected():
         print("You're connected to database!")
@@ -20,3 +20,7 @@ def close_connection(cursor, db):
     db.close()
     if not db.is_connected():
         print("MySQL connection is closed")
+
+# loading DB credentials
+with open("config.json","r") as file:
+    configuration = json.load(file)

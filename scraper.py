@@ -1,3 +1,4 @@
+from turtle import update
 import requests
 from selenium.webdriver.chrome.service import Service
 import scrapy
@@ -8,20 +9,22 @@ import datetime
 import json
 import time
 import pandas as pd
+import re
 # import pyautogui
 
 with open('config.json', 'r') as c:
+    configuration = json.load(c) 
     params = json.load(c)["params"]
 from logs import logger
-log = logger()
 
-scraper_logger = log.scrapper_logger()
+log = logger()
+scraper_logger = log.scrapper_logger("hotel_data","scrapper.log")
 
 
 class BusinessSpider(scrapy.Spider):
     allowed_domains = ['booking.com']
     custom_settings = {
-        # 'DOWNLOAD_DELAY': 0.25,
+        'DOWNLOAD_DELAY': 1,
         "AUTOTHROTTLE_ENABLED" : True,   #  Enable and configure the AutoThrottle extension (disabled by default)
         # "AUTOTHROTTLE_START_DELAY" : 0.2,   # The initial download delay
         # "AUTOTHROTTLE_TARGET_CONCURRENCY" : 32,  # The average number of requests Scrapy should be sending in parallel
@@ -30,16 +33,18 @@ class BusinessSpider(scrapy.Spider):
         'COOKIES_ENABLED': True,
         'COOKIES_DEBUG': True,
         "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36",
+        # proxy implementation
+        # "ROTATING_PROXY_LIST" : configuration['proxy_list'],
+        # "DOWNLOADER_MIDDLEWARES" : {
+        #     "rotating_proxies.middlewares.RotatingProxyMiddleware" : 610,
+        #     "rotating_proxies.middlewares.BanDetectionMiddleware" : 620
+        # }
     }
 
     name = "business_spider"
     cursor, db = connection()
     # url = "https://www.booking.com/hotel/us/park-lane-new-york.html?aid=355028&sid=1549047c74a89e97aea3aceb98166ca9&dest_id=20088325;dest_type=city;dist=0;group_adults=2;group_children=0;hapos=7;hpos=7;no_rooms=1;req_adults=2;req_children=0;room1=A%2CA;sb_price_type=total;sr_order=popularity;srepoch=1653886966;srpvid=ad73237a01a2015b;type=total;ucfs=1&#hotelTmpl"
-    # url = "https://www.booking.com/hotel/pk/islamabad-regalia.html?aid=304142&label=gen173nr-1DCAEoggI46AdIM1gEaLUBiAEBmAExuAEXyAEM2AED6AEB-AECiAIBqAIDuALHh-GUBsACAdICJDQ5YTc1ZjMzLTM5ODgtNDVmYi1iY2IzLTk1NzUxNDA4M2UwN9gCBOACAQ&sid=1f151b43a32790c15dc498940c0c85c3&dest_id=-2762812;dest_type=city;dist=0;group_adults=2;group_children=0;hapos=1;hpos=1;no_rooms=1;req_adults=2;req_children=0;room1=A%2CA;sb_price_type=total;sr_order=popularity;srepoch=1654146002;srpvid=e0262328d5440036;type=total;ucfs=1&#hotelTmpl"
-    # url = "https://www.booking.com/hotel/us/park-lane-new-york.html?aid=355028&sid=1549047c74a89e97aea3aceb98166ca9&dest_id=20088325;dest_type=city;dist=0;group_adults=2;group_children=0;hapos=7;hpos=7;no_rooms=1;req_adults=2;req_children=0;room1=A%2CA;sb_price_type=total;sr_order=popularity;srepoch=1653886966;srpvid=ad73237a01a2015b;type=total;ucfs=1&#hotelTmpl"
     # self.url = "https://www.booking.com/hotel/pt/casas-de-canavezes.html?aid=304142&label=gen173nr-1DCAEoggI46AdIM1gEaLUBiAEBmAExuAEXyAEM2AED6AEB-AECiAIBqAIDuAKMhtGUBsACAdICJDFjMzNjMTBiLTgxZGYtNGViMC04MjM4LTkyZTBhMTRkOTk0MNgCBOACAQ&sid=1f151b43a32790c15dc498940c0c85c3&all_sr_blocks=251207404_103625995_2_2_0;checkin=2022-05-30;checkout=2022-05-31;dist=0;group_adults=2;group_children=0;hapos=2;highlighted_blocks=251207404_103625995_2_2_0;hpos=2;matching_block_id=251207404_103625995_2_2_0;no_rooms=1;req_adults=2;req_children=0;room1=A%2CA;sb_price_type=total;sr_order=popularity;sr_pri_blocks=251207404_103625995_2_2_0__6300;srepoch=1653883801;srpvid=b9961d4c6b62003e;type=total;ucfs=1&#hotelTmpl"
-    # self.url = "https://www.booking.com/hotel/pt/casas-de-canavezes.html?aid=304142&label=gen173nr-1DCAEoggI46AdIM1gEaLUBiAEBmAExuAEXyAEM2AED6AEB-AECiAIBqAIDuALN_M-UBsACAdICJDViMTgyMTViLWU4NGQtNGZhNi04MDYyLWQ4MDI5NjYxNWZlNtgCBOACAQ&sid=1f151b43a32790c15dc498940c0c85c3&all_sr_blocks=251207404_103625995_2_2_0;checkin=2022-05-30;checkout=2022-05-31;dist=0;group_adults=2;group_children=0;hapos=16;highlighted_blocks=251207404_103625995_2_2_0;hpos=16;matching_block_id=251207404_103625995_2_2_0;no_rooms=1;req_adults=2;req_children=0;room1=A%2CA;sb_price_type=total;sr_order=popularity;sr_pri_blocks=251207404_103625995_2_2_0__6300;srepoch=1653866068;srpvid=1489a36935a20248;type=total;ucfs=1&#hotelTmpl"
-    # scraper_logger.info(f"Link is \'{url}\'")
 
     def start_requests(self):
         # cursor, db = connection()
@@ -49,6 +54,7 @@ class BusinessSpider(scrapy.Spider):
             yield scrapy.Request(url=url, callback=self.parse,meta={"url":url})
 
     def hotel_data(self, response):
+        # scraper_logger.info(f"Link is \'{response.meta.get('url')}\'")
         name_xpath = "//h2[contains(@id,'hp_hotel_name')]/text()"
         address_xpath = '//p[contains(@id,"showMap2")]/span[1]/text()'
         description_xpath = '//div[contains(@class,"k2-hp--description")]/div/div/div/div[3]/p/text()'
@@ -83,10 +89,14 @@ class BusinessSpider(scrapy.Spider):
         # hotel english reviews for reviews scraper
         english_reviews = response.xpath("//div[contains(@id,'review_lang_filter')]//ul[@class='bui-dropdown-menu__items']/li//button[contains(@data-value,'en')]/text()").extract()
         data = " ".join(english_reviews).split(" ")[-1].strip()
-        data = data.replace("(","")
-        data = data.replace(")","")
+        # data = data.replace("(","")
+        # data = data.replace(")","")
 
-        english_review = data        
+        data = " ".join(english_reviews)
+        data = re.findall("\d+",data)
+
+        english_review = data[0] if data else 0
+        # english_review = data
 
         return name, address, description, reason, total_reviews,hotel_class,recommended_stay,english_review
 
@@ -142,33 +152,6 @@ class BusinessSpider(scrapy.Spider):
             except:
                 break
         return questions, answers
-
-    # def query_data(self):
-    #     cursor, db = connection()
-    #     cursor.execute(
-    #         "SELECT * FROM query WHERE business_link=%s", (self.url,))
-    #     query_data = cursor.fetchall()
-    #     if query_data:
-    #         scraper_logger.info("Business Alread Exists In Query Table")
-    #         query_id = query_data[0][0]
-    #     else:
-    #         current_time = datetime.datetime.today()
-    #         try:
-    #             cursor.execute(
-    #                 "INSERT INTO query( business_link,  date_created) VALUES ( %s, %s)", (self.url, current_time,))
-    #             db.commit()
-    #             scraper_logger.info(
-    #                 "Data Insert into Query Table Successfully!")
-    #         except:
-    #             scraper_logger.error(
-    #                 "Error in Inserting data into Query Table")
-    #     cursor.execute(
-    #         "SELECT * FROM query WHERE business_link=%s", (self.url,))
-    #     query_data = cursor.fetchall()
-
-    #     query_id = query_data[0][0]
-    #     close_connection(cursor, db)
-    #     return query_id
 
     def Facilities(self, response):
         popular_facilities_xpath = "//div[contains(@class,'hotel-facilities__most-popular')]//div[contains(@class,'important_facility')]/text()"
@@ -237,21 +220,27 @@ class BusinessSpider(scrapy.Spider):
         self.cursor.execute(
             "SELECT * FROM hotel_data WHERE query_id=%s", (query_id,))
         hotel_data = self.cursor.fetchall()
-        if hotel_data:
-            hotel_data_id = hotel_data[0][0]
-            scraper_logger.info("Hotel Data Already Exists")
-        else:
-            # try:
-            # print(free_wifi_rating)
-            print("HELLO WORLD: ",name," reviews is: ",english_review)
-            # print("The data is: ",query_id, name, description, address, rating, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type)
-            self.cursor.execute("INSERT INTO hotel_data(query_id,name,hotel_class,recommended_stay,description, address, rating,english_review, total_reviews,  reason_to_choose, popular_amenities, staff_rating, facilities_rating, cleaning_rating, comfort_rating,value_for_money_rating,location_rating, free_wifi_rating, food_type ) VALUES ( %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                            (query_id, name,hotel_class,",".join(recommended_stay), description, address, rating,english_review, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type,))
-            self.db.commit()
-            scraper_logger.info("Hotel Data Inserted Successfully!")
 
-            # except:
-                # scraper_logger.error("Error in inserting hotel data")
+        if hotel_data: #means we need to update hotel data
+            update_query = "UPDATE hotel_data SET name=%s,hotel_class=%s,recommended_stay=%s,description=%s,address=%s,rating=%s,prev_eng_review=english_review,english_review=%s,total_reviews=%s,reason_to_choose=%s,popular_amenities=%s,staff_rating=%s,facilities_rating=%s,cleaning_rating=%s,comfort_rating=%s,value_for_money_rating=%s,location_rating=%s,free_wifi_rating=%s,food_type=%s WHERE query_id=%s"
+            update_val = (name.strip(),hotel_class,",".join(recommended_stay), description, address, rating,english_review, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type,query_id)
+            self.cursor.execute(update_query,update_val)
+            self.db.commit()
+
+            hotel_data_id = hotel_data[0][0]
+            scraper_logger.info("Hotel Data Updated Successfully")
+        else:
+            print("HELLO WORLD: ",name," reviews is: ",english_review)
+            try:
+            # print("The data is: ",query_id, name, description, address, rating, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type)
+                self.cursor.execute("INSERT INTO hotel_data(query_id,name,hotel_class,recommended_stay,description, address, rating,english_review, total_reviews,  reason_to_choose, popular_amenities, staff_rating, facilities_rating, cleaning_rating, comfort_rating,value_for_money_rating,location_rating, free_wifi_rating, food_type ) VALUES ( %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                                (query_id, name.strip(),hotel_class,",".join(recommended_stay), description, address, rating,english_review, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type,))
+                self.db.commit()
+                scraper_logger.info("Hotel Data Inserted Successfully!")
+
+            except:
+                print("Description is: ",description)
+                scraper_logger.error("Error in inserting hotel data")
             self.cursor.execute(
                 "SELECT * FROM hotel_data WHERE query_id=%s", (query_id,))
             hotel_data = self.cursor.fetchall()
@@ -291,8 +280,8 @@ class BusinessSpider(scrapy.Spider):
                     "INSERT INTO hotel_question_answers( hotel_data_id,  question, answer) VALUES ( %s, %s,%s)", (hotel_data_id, question, answers[count],))
                 self.db.commit()
                 count = count + 1
-            scraper_logger.info(
-                "Data inserted into hotel_question_answers table Scucessfully!")
+            # scraper_logger.info(
+                # "Data inserted into hotel_question_answers table Scucessfully!")
         else:
             scraper_logger.info(
                 "Data already exists in hotel_question_answers table")
@@ -300,6 +289,7 @@ class BusinessSpider(scrapy.Spider):
         # close_connection(cursor, db)
 
     def parse(self, response):
+        scraper_logger.info(f"Link is \'{response.meta.get('url')}\'")
         start_time = time.perf_counter()
         # query_id = self.query_data()
         cursor, db = connection()
