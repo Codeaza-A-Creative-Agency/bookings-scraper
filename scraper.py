@@ -1,9 +1,5 @@
-from turtle import update
-import requests
-from selenium.webdriver.chrome.service import Service
 import scrapy
 from scrapy.crawler import CrawlerProcess
-from selenium import webdriver
 from config import connection, close_connection
 import datetime
 import json
