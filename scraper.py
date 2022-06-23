@@ -1,5 +1,6 @@
 import scrapy
 from scrapy.crawler import CrawlerProcess
+from sqlalchemy import null
 from config import connection, close_connection
 import datetime
 import json
@@ -8,9 +9,11 @@ import pandas as pd
 import re
 # import pyautogui
 
+# //a[@id='hotel_header']/@data-atlas-latlng (xpath for latitude,longitude)
+
 with open('config.json', 'r') as c:
     configuration = json.load(c) 
-    params = json.load(c)["params"]
+    # params = json.load(c)["params"]
 from logs import logger
 
 log = logger()
@@ -26,15 +29,15 @@ class BusinessSpider(scrapy.Spider):
         # "AUTOTHROTTLE_TARGET_CONCURRENCY" : 32,  # The average number of requests Scrapy should be sending in parallel
         "DOWNLOAD_TIMEOUT": 360,     # Default: 180
         'RETRY_TIMES': 10,
-        'COOKIES_ENABLED': True,
-        'COOKIES_DEBUG': True,
-        "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36",
+        # 'COOKIES_ENABLED': True,
+        # 'COOKIES_DEBUG': True,
+        # "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36",
         # proxy implementation
-        # "ROTATING_PROXY_LIST" : configuration['proxy_list'],
-        # "DOWNLOADER_MIDDLEWARES" : {
-        #     "rotating_proxies.middlewares.RotatingProxyMiddleware" : 610,
-        #     "rotating_proxies.middlewares.BanDetectionMiddleware" : 620
-        # }
+        "ROTATING_PROXY_LIST" : configuration['proxy_list'],
+        "DOWNLOADER_MIDDLEWARES" : {
+            "rotating_proxies.middlewares.RotatingProxyMiddleware" : 610,
+            "rotating_proxies.middlewares.BanDetectionMiddleware" : 620
+        }
     }
 
     name = "business_spider"
@@ -57,7 +60,10 @@ class BusinessSpider(scrapy.Spider):
         choosen_reasons_xpath = '//div[contains(@class,"bui-text--variant-emphasized_1")]/text()'
         total_reviews_xpath = '//a[contains(@id,"show_reviews_tab")]/span/text()'
         # hotel_class and recommended_stay
-        hotel_class_xpath = "//span[contains(@data-testid,'rating-stars')]/span"
+        hotel_class_xpath = "//span[@data-testid='rating-stars']/span"
+        hotel_class_xpath_01 = "//span[@data-testid='rating-circles']/span"
+        hotel_class_xpath_02 = "//span[@data-testid='rating-squares']/span"
+
         recommended_stay_xpath = "//span[contains(@class,'facility-badge__tooltip-title')]/text()"
 
         name = response.xpath(name_xpath).extract()
@@ -72,6 +78,13 @@ class BusinessSpider(scrapy.Spider):
         for data in choose:
             if not data == '\n' and not data == '':
                 reason = reason + data
+
+        # manipulated as output required
+        if reason:
+            reason = reason.strip()
+            reason = reason.replace("\n","")
+            reason = re.sub(r"\s{2}",",",reason)
+        
         total_reviews = response.xpath(total_reviews_xpath).extract()
         total_reviews = total_reviews[1]
         total_reviews = total_reviews.replace(' ', '')
@@ -80,7 +93,20 @@ class BusinessSpider(scrapy.Spider):
         total_reviews = total_reviews.replace(',', '')
         total_reviews = int(total_reviews)
     
-        hotel_class = len(response.xpath(hotel_class_xpath).extract())
+        # hotel class and class source of Hotel
+        if response.xpath(hotel_class_xpath).extract():
+            hotel_class = len(response.xpath(hotel_class_xpath).extract())
+            class_source = "official"
+        elif response.xpath(hotel_class_xpath_01).extract():
+            hotel_class = len(response.xpath(hotel_class_xpath_01).extract())
+            class_source = "assessed"
+        elif response.xpath(hotel_class_xpath_02).extract():
+            hotel_class = len(response.xpath(hotel_class_xpath_02).extract())
+            class_source = "website"
+        else:
+            hotel_class = None
+            class_source = None
+        
         recommended_stay = response.xpath(recommended_stay_xpath).extract()
         # hotel english reviews for reviews scraper
         english_reviews = response.xpath("//div[contains(@id,'review_lang_filter')]//ul[@class='bui-dropdown-menu__items']/li//button[contains(@data-value,'en')]/text()").extract()
@@ -94,7 +120,7 @@ class BusinessSpider(scrapy.Spider):
         english_review = data[0] if data else 0
         # english_review = data
 
-        return name, address, description, reason, total_reviews,hotel_class,recommended_stay,english_review
+        return name, address, description, reason, total_reviews,hotel_class,class_source,recommended_stay,english_review
 
     def guest_reviews(self, response):
         staff_rating = ''
@@ -158,6 +184,14 @@ class BusinessSpider(scrapy.Spider):
                 popular_facility = popular_facility.replace("\n", '')
                 facilities = facilities + popular_facility
                 facilities = facilities + ","
+        # adding additional amenities
+        additional_amenities = response.xpath("//div[contains(@class,'hotel-facilities__list')]//ul/li/div/div/text()").extract()
+        amenities = ""
+        for amenity in additional_amenities:
+            if amenity != "\n":
+                amenity = amenity.replace("\n","")
+                amenities = amenities + amenity + ","
+
         facility_list_xpath = "//div[contains(@class,'hotel-facilities__list')]"
         facility_list = response.xpath(facility_list_xpath)
         allData = facility_list.xpath('./div')
@@ -184,7 +218,7 @@ class BusinessSpider(scrapy.Spider):
                     '//p[contains(@class,"cuisines")]/text()')[1].extract()
             except:
                 food_type = 'none'
-        return facilities, facility_titles, facility_texts, food_type
+        return facilities+amenities, facility_titles, facility_texts, food_type
 
     def hotel_surrounding(self, response):
         hotel_surroundings_xpath = "//div[contains(@class,'hp_location_block__content_container')]"
@@ -211,15 +245,15 @@ class BusinessSpider(scrapy.Spider):
 
         return surroundings, descriptionss
 
-    def db_hotel(self, query_id, name,hotel_class,recommended_stay, description, address, rating,english_review, total_reviews, reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type):
+    def db_hotel(self, query_id, name,hotel_class,class_source,recommended_stay, description, address, rating,english_review, total_reviews, reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type):
         # cursor, db = connection()
         self.cursor.execute(
             "SELECT * FROM hotel_data WHERE query_id=%s", (query_id,))
         hotel_data = self.cursor.fetchall()
 
         if hotel_data: #means we need to update hotel data
-            update_query = "UPDATE hotel_data SET name=%s,hotel_class=%s,recommended_stay=%s,description=%s,address=%s,rating=%s,prev_eng_review=english_review,english_review=%s,total_reviews=%s,reason_to_choose=%s,popular_amenities=%s,staff_rating=%s,facilities_rating=%s,cleaning_rating=%s,comfort_rating=%s,value_for_money_rating=%s,location_rating=%s,free_wifi_rating=%s,food_type=%s WHERE query_id=%s"
-            update_val = (name.strip(),hotel_class,",".join(recommended_stay), description, address, rating,english_review, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type,query_id)
+            update_query = "UPDATE hotel_data SET name=%s,hotel_class=%s,class_source=%s,recommended_stay=%s,description=%s,address=%s,rating=%s,prev_eng_review=english_review,english_review=%s,total_reviews=%s,reason_to_choose=%s,popular_amenities=%s,staff_rating=%s,facilities_rating=%s,cleaning_rating=%s,comfort_rating=%s,value_for_money_rating=%s,location_rating=%s,free_wifi_rating=%s,food_type=%s WHERE query_id=%s"
+            update_val = (name.strip(),hotel_class,class_source,",".join(recommended_stay), description, address.strip(), rating,english_review, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type,query_id)
             self.cursor.execute(update_query,update_val)
             self.db.commit()
 
@@ -228,14 +262,14 @@ class BusinessSpider(scrapy.Spider):
         else:
             print("HELLO WORLD: ",name," reviews is: ",english_review)
             try:
-            # print("The data is: ",query_id, name, description, address, rating, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type)
-                self.cursor.execute("INSERT INTO hotel_data(query_id,name,hotel_class,recommended_stay,description, address, rating,english_review, total_reviews,  reason_to_choose, popular_amenities, staff_rating, facilities_rating, cleaning_rating, comfort_rating,value_for_money_rating,location_rating, free_wifi_rating, food_type ) VALUES ( %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                                (query_id, name.strip(),hotel_class,",".join(recommended_stay), description, address, rating,english_review, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type,))
+                # print("The data is: ",query_id, name, description, address, rating, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type)
+                self.cursor.execute("INSERT INTO hotel_data(query_id,name,hotel_class,class_source,recommended_stay,description, address, rating,english_review, total_reviews,  reason_to_choose, popular_amenities, staff_rating, facilities_rating, cleaning_rating, comfort_rating,value_for_money_rating,location_rating, free_wifi_rating, food_type ) VALUES ( %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                                (query_id, name.strip(),hotel_class,class_source,",".join(recommended_stay), description, address.strip(), rating,english_review, total_reviews,  reason_to_choose, facilities, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type,))
                 self.db.commit()
                 scraper_logger.info("Hotel Data Inserted Successfully!")
 
             except:
-                print("Description is: ",description)
+            #     print("Description is: ",description)
                 scraper_logger.error("Error in inserting hotel data")
             self.cursor.execute(
                 "SELECT * FROM hotel_data WHERE query_id=%s", (query_id,))
@@ -305,7 +339,7 @@ class BusinessSpider(scrapy.Spider):
             response)
         rating, staff_rating, facility_rating, cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating = self.guest_reviews(
             response)
-        name, address, description, reason_to_choose, total_reviews,hotel_class,recommended_stay,english_review = self.hotel_data(
+        name, address, description, reason_to_choose, total_reviews,hotel_class,class_source,recommended_stay,english_review = self.hotel_data(
             response)
         surroundings = []
         surrounding_descriptions = []
@@ -313,7 +347,7 @@ class BusinessSpider(scrapy.Spider):
             response)
         new_titles = facility_titles + surroundings
         new_descriptions = facility_texts + surrounding_descriptions
-        hotel_data_id = self.db_hotel(query_id, name,hotel_class,recommended_stay, description, address, rating,english_review, total_reviews, reason_to_choose, facilities, staff_rating, facility_rating,
+        hotel_data_id = self.db_hotel(query_id, name,hotel_class,class_source,recommended_stay, description, address, rating,english_review, total_reviews, reason_to_choose, facilities, staff_rating, facility_rating,
                                       cleaning_rating, comfort_rating, value_for_money_rating, location_rating, free_wifi_rating, food_type)
         self.db_facilities(hotel_data_id, new_titles, new_descriptions)
         self.db_question_answers(hotel_data_id, questions, answers)

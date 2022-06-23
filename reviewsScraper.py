@@ -74,9 +74,9 @@ async def main(cc, name, offset, rows, query_id):
                         room_type = user_details.xpath(
                             ".//a[contains(@class,'c-review-block__room-link')]/div/text()").extract_first()
                     except:
-                        room_type = 'none'
+                        room_type = None
                     if room_type is None:
-                        room_type = 'none'
+                        room_type = None
                     stay_time_date = user_details.xpath(
                         ".//ul[contains(@class,'c-review-block__stay-date')]/li/div")
                     stay_time = stay_time_date.xpath('./text()').extract_first().strip().split(" ")[0]
@@ -152,10 +152,11 @@ async def main(cc, name, offset, rows, query_id):
 
                 count = 0
                 for reviewer_name in reviewer_names:
+                    reviewer_name = None if reviewer_name == "Anonymous" else reviewer_name
                     cond_check = [i for i in db_review_data if (reviewer_name in i) and (review_titles[count] in i)]
                     if not cond_check:
                         cursor.execute("INSERT INTO reviews_data(query_id,reviewer_name, reviewer_location, room_type, stay_time,stayed_date,stay_like,reviewed_time,review_title, positive_review_text, negative_review_text,photos, review_rating,hotel_response ) VALUES ( %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                                    (int(query_id), reviewer_name, reviewer_locations[count], room_types[count].strip(), stay_timess[count],  stay_dates[count], stay_likes[count], review_times[count], review_titles[count],positive_review_texts[count],negative_review_texts[count],photos_count[count], review_ratings[count], hotel_responses[count],))
+                                    (int(query_id), reviewer_name, reviewer_locations[count], room_types[count].strip() if room_types[count] else room_types[count], stay_timess[count],  stay_dates[count], stay_likes[count], review_times[count].strip(), review_titles[count],positive_review_texts[count],negative_review_texts[count],photos_count[count], review_ratings[count], hotel_responses[count],))
                         db.commit()
                         count = count + 1
                     else:
