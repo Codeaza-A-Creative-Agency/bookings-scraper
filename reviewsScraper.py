@@ -31,7 +31,8 @@ async def main(cc, name, offset, rows, query_id):
                 data = await resp.text()
                 response = Selector(text=data)
                 # complete reviews data
-                re_scrape_query = "SELECT * FROM reviews_data WHERE query_id=%s"
+                # reviewer_name,review_title,reviewer_location,stay_time,reviewed_time,room_type
+                re_scrape_query = "SELECT reviewer_name,reviewer_location,review_title,stay_time,reviewed_time,room_type FROM reviews_data WHERE query_id=%s"
                 vall = (int(query_id),)              
                 cursor.execute(re_scrape_query,vall)  
                 db_review_data = cursor.fetchall()
@@ -152,16 +153,23 @@ async def main(cc, name, offset, rows, query_id):
 
                 count = 0
                 for reviewer_name in reviewer_names:
+                    room_type = room_types[count].strip() if room_types[count] else room_types[count]
                     reviewer_name = None if reviewer_name == "Anonymous" else reviewer_name
-                    cond_check = [i for i in db_review_data if (reviewer_name in i) and (review_titles[count] in i)]
+                    # reviewer_name,review_title,reviewer_location,stay_time,reviewed_time,room_type
+                    cond_check = [i for i in db_review_data if (reviewer_name in i) and (review_titles[count] in i) and (reviewer_locations[count] in i) and (stay_timess[count] in i) and (review_times[count].strip() in i) and (room_type in i)]
+                    # cond_check = [i for i in db_review_data if (reviewer_locations[count] in i) and (review_titles[count] in i)]
                     if not cond_check:
                         cursor.execute("INSERT INTO reviews_data(query_id,reviewer_name, reviewer_location, room_type, stay_time,stayed_date,stay_like,reviewed_time,review_title, positive_review_text, negative_review_text,photos, review_rating,hotel_response ) VALUES ( %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                                    (int(query_id), reviewer_name, reviewer_locations[count], room_types[count].strip() if room_types[count] else room_types[count], stay_timess[count],  stay_dates[count], stay_likes[count], review_times[count].strip(), review_titles[count],positive_review_texts[count],negative_review_texts[count],photos_count[count], review_ratings[count], hotel_responses[count],))
+                                    (int(query_id), reviewer_name, reviewer_locations[count], room_type, stay_timess[count],  stay_dates[count], stay_likes[count], review_times[count].strip(), review_titles[count],positive_review_texts[count],negative_review_texts[count],photos_count[count], review_ratings[count], hotel_responses[count],))
                         db.commit()
                         count = count + 1
                     else:
                         print("NOTHING BREAKING")
                         break
+                # update anonymous to null
+                # query1 = "UPDATE reviews_data SET reviewer_name = NULL WHERE reviewer_name = 'Anonymous'"
+                # cursor.execute(query1)
+                # db.commit()
                 # update query status
                 query = "UPDATE query SET review_data = %s WHERE query_id=%s"
                 val = (1,int(query_id))
